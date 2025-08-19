@@ -1,4 +1,4 @@
-import React, { useState, useRef, useCallback } from 'react';
+import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Mic, Square, Play, Pause } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
@@ -6,9 +6,10 @@ import { useToast } from '@/hooks/use-toast';
 interface AudioRecorderProps {
   onAudioRecorded: (audioBlob: Blob) => void;
   disabled?: boolean;
+  existingAudioBlob?: Blob | null;
 }
 
-export function AudioRecorder({ onAudioRecorded, disabled }: AudioRecorderProps) {
+export function AudioRecorder({ onAudioRecorded, disabled, existingAudioBlob }: AudioRecorderProps) {
   const [isRecording, setIsRecording] = useState(false);
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -20,6 +21,15 @@ export function AudioRecorder({ onAudioRecorded, disabled }: AudioRecorderProps)
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   
   const { toast } = useToast();
+
+  // Set up existing audio if provided
+  useEffect(() => {
+    if (existingAudioBlob) {
+      const url = URL.createObjectURL(existingAudioBlob);
+      setAudioUrl(url);
+      return () => URL.revokeObjectURL(url);
+    }
+  }, [existingAudioBlob]);
 
   const startTimer = useCallback(() => {
     setRecordingTime(0);

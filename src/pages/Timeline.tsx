@@ -21,6 +21,7 @@ export function Timeline() {
   const [entries, setEntries] = useState<JournalEntry[]>([]);
   const [expandedEntries, setExpandedEntries] = useState<Set<string>>(new Set());
   const [playingAudio, setPlayingAudio] = useState<string | null>(null);
+  const [audioUrls, setAudioUrls] = useState<Map<string, string>>(new Map());
   const [loading, setLoading] = useState(true);
   
   const { toast } = useToast();
@@ -30,6 +31,15 @@ export function Timeline() {
       setLoading(true);
       const allEntries = await journalDB.getAll();
       setEntries(allEntries);
+      
+      // Generate audio URLs for entries with audio blobs
+      const newAudioUrls = new Map<string, string>();
+      allEntries.forEach(entry => {
+        if (entry.audioBlob) {
+          newAudioUrls.set(entry.id, URL.createObjectURL(entry.audioBlob));
+        }
+      });
+      setAudioUrls(newAudioUrls);
     } catch (error) {
       console.error('Error loading entries:', error);
       toast({
@@ -44,6 +54,11 @@ export function Timeline() {
 
   useEffect(() => {
     loadEntries();
+    
+    // Cleanup function to revoke all audio URLs
+    return () => {
+      audioUrls.forEach(url => URL.revokeObjectURL(url));
+    };
   }, [loadEntries]);
 
   const toggleExpanded = useCallback((entryId: string) => {
@@ -78,7 +93,10 @@ export function Timeline() {
     }
   }, [toast]);
 
-  const toggleAudio = useCallback((entryId: string, audioUrl: string) => {
+  const toggleAudio = useCallback((entryId: string) => {
+    const audioUrl = audioUrls.get(entryId);
+    if (!audioUrl) return;
+    
     if (playingAudio === entryId) {
       // Stop current audio
       const audio = document.getElementById(`audio-${entryId}`) as HTMLAudioElement;
@@ -104,7 +122,7 @@ export function Timeline() {
         setPlayingAudio(entryId);
       }
     }
-  }, [playingAudio]);
+  }, [playingAudio, audioUrls]);
 
   const formatDate = (date: Date) => {
     const now = new Date();
@@ -230,12 +248,12 @@ export function Timeline() {
                     </p>
                   )}
 
-                  {entry.audioUrl && (
+                  {audioUrls.has(entry.id) && (
                     <div className="flex items-center gap-3 p-3 bg-muted/50 rounded-lg">
                       <Button
                         variant="ghost"
                         size="sm"
-                        onClick={() => toggleAudio(entry.id, entry.audioUrl!)}
+                        onClick={() => toggleAudio(entry.id)}
                         className="h-8 w-8 p-0 rounded-full"
                       >
                         {isPlaying ? (
@@ -249,7 +267,7 @@ export function Timeline() {
                       </span>
                       <audio
                         id={`audio-${entry.id}`}
-                        src={entry.audioUrl}
+                        src={audioUrls.get(entry.id)}
                         onEnded={() => setPlayingAudio(null)}
                         className="hidden"
                       />
@@ -259,6 +277,17 @@ export function Timeline() {
 
                 {isExpanded && (
                   <div className="flex justify-end gap-2 pt-2 border-t">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-8 px-3 text-xs hover:bg-primary/10 hover:text-primary"
+                      asChild
+                    >
+                      <a href={`/?id=${entry.id}`}>
+                        <Edit3 className="h-3 w-3 mr-1" />
+                        Edit
+                      </a>
+                    </Button>
                     <Button
                       variant="ghost"
                       size="sm"

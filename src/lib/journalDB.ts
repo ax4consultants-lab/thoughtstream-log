@@ -42,6 +42,10 @@ class JournalDatabase {
     });
   }
 
+  async update(entry: JournalEntry): Promise<void> {
+    return this.save(entry); // Same implementation as save for IndexedDB
+  }
+
   async getAll(): Promise<JournalEntry[]> {
     if (!this.db) await this.init();
 
@@ -105,7 +109,7 @@ class JournalDatabase {
       return size + entrySize;
     }, 0);
 
-    const timestamps = entries.map(e => new Date(e.timestamp)).sort();
+    const timestamps = entries.map(e => new Date(e.createdAt)).sort((a, b) => a.getTime() - b.getTime());
     
     return {
       totalEntries: entries.length,

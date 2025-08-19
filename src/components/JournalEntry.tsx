@@ -1,8 +1,8 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Card } from '@/components/ui/card';
-import { Save, BookOpen } from 'lucide-react';
+import { Save, BookOpen, X } from 'lucide-react';
 import { AudioRecorder } from './AudioRecorder';
 import { TagInput } from './TagInput';
 import { useToast } from '@/hooks/use-toast';
@@ -18,8 +18,34 @@ export function JournalEntry({ onEntrySaved }: JournalEntryProps) {
   const [tags, setTags] = useState<string[]>([]);
   const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [editingEntry, setEditingEntry] = useState<JournalEntryType | null>(null);
+  const [audioRecorderKey, setAudioRecorderKey] = useState(0);
   
   const { toast } = useToast();
+
+  // Check for edit mode from URL params
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const entryId = urlParams.get('id');
+    
+    if (entryId) {
+      journalDB.getById(entryId).then(entry => {
+        if (entry) {
+          setEditingEntry(entry);
+          setContent(entry.content);
+          setTags(entry.tags);
+          setAudioBlob(entry.audioBlob || null);
+        }
+      }).catch(error => {
+        console.error('Error loading entry for edit:', error);
+        toast({
+          title: "Load failed",
+          description: "Could not load entry for editing",
+          variant: "destructive",
+        });
+      });
+    }
+  }, [toast]);
 
   const handleSave = useCallback(async () => {
     if (!content.trim() && !audioBlob) {
@@ -35,44 +61,72 @@ export function JournalEntry({ onEntrySaved }: JournalEntryProps) {
     
     try {
       const now = new Date();
-      const entry: JournalEntryType = {
-        id: crypto.randomUUID(),
-        content: content.trim(),
-        tags,
-        timestamp: now,
-        audioBlob: audioBlob || undefined,
-        audioUrl: audioBlob ? URL.createObjectURL(audioBlob) : undefined,
-        createdAt: now,
-        updatedAt: now,
-      };
+      
+      if (editingEntry) {
+        // Update existing entry
+        const updatedEntry: JournalEntryType = {
+          ...editingEntry,
+          content: content.trim(),
+          tags,
+          audioBlob: audioBlob || undefined,
+          updatedAt: now,
+        };
+        
+        await journalDB.update(updatedEntry);
+        
+        toast({
+          title: "Entry updated",
+          description: "Your journal entry has been updated successfully",
+        });
+        
+        // Navigate back to timeline
+        window.location.href = '/timeline';
+      } else {
+        // Create new entry
+        const entry: JournalEntryType = {
+          id: crypto.randomUUID(),
+          content: content.trim(),
+          tags,
+          timestamp: now,
+          audioBlob: audioBlob || undefined,
+          createdAt: now,
+          updatedAt: now,
+        };
 
-      await journalDB.save(entry);
-      
-      toast({
-        title: "Entry saved",
-        description: "Your journal entry has been saved successfully",
-      });
-      
-      // Reset form
-      setContent('');
-      setTags([]);
-      setAudioBlob(null);
-      
-      onEntrySaved?.(entry);
+        await journalDB.save(entry);
+        
+        toast({
+          title: "Entry saved",
+          description: "Your journal entry has been saved successfully",
+        });
+        
+        // Reset form
+        setContent('');
+        setTags([]);
+        setAudioBlob(null);
+        setAudioRecorderKey(prev => prev + 1);
+        
+        onEntrySaved?.(entry);
+      }
     } catch (error) {
       console.error('Error saving entry:', error);
       toast({
-        title: "Save failed",
-        description: "There was an error saving your entry. Please try again.",
+        title: editingEntry ? "Update failed" : "Save failed",
+        description: `There was an error ${editingEntry ? 'updating' : 'saving'} your entry. Please try again.`,
         variant: "destructive",
       });
     } finally {
       setIsSaving(false);
     }
-  }, [content, tags, audioBlob, toast, onEntrySaved]);
+  }, [content, tags, audioBlob, toast, onEntrySaved, editingEntry]);
 
   const handleAudioRecorded = useCallback((blob: Blob) => {
     setAudioBlob(blob);
+  }, []);
+
+  const handleRemoveAudio = useCallback(() => {
+    setAudioBlob(null);
+    setAudioRecorderKey(prev => prev + 1);
   }, []);
 
   return (
@@ -81,12 +135,25 @@ export function JournalEntry({ onEntrySaved }: JournalEntryProps) {
         <div className="flex items-center justify-center gap-3 mb-2">
           <BookOpen className="h-8 w-8 text-primary" />
           <h1 className="text-2xl font-bold bg-gradient-primary bg-clip-text text-transparent">
-            Journal
+            {editingEntry ? 'Edit Entry' : 'Journal'}
           </h1>
         </div>
         <p className="text-muted-foreground text-sm">
-          Capture your thoughts and moments
+          {editingEntry ? 'Update your journal entry' : 'Capture your thoughts and moments'}
         </p>
+        {editingEntry && (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="mt-2 text-xs"
+            asChild
+          >
+            <a href="/">
+              <X className="h-3 w-3 mr-1" />
+              Cancel Edit
+            </a>
+          </Button>
+        )}
       </div>
 
       <Card className="p-6 space-y-6 shadow-medium border-0 bg-gradient-subtle">
@@ -111,12 +178,28 @@ export function JournalEntry({ onEntrySaved }: JournalEntryProps) {
         </div>
 
         <div className="space-y-3">
-          <label className="text-sm font-medium text-foreground">
-            Voice note (optional)
-          </label>
+          <div className="flex items-center justify-between">
+            <label className="text-sm font-medium text-foreground">
+              Voice note (optional)
+            </label>
+            {audioBlob && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handleRemoveAudio}
+                className="text-xs text-destructive hover:text-destructive"
+                disabled={isSaving}
+              >
+                <X className="h-3 w-3 mr-1" />
+                Remove Audio
+              </Button>
+            )}
+          </div>
           <AudioRecorder
+            key={audioRecorderKey}
             onAudioRecorded={handleAudioRecorded}
             disabled={isSaving}
+            existingAudioBlob={audioBlob}
           />
         </div>
 
@@ -127,7 +210,7 @@ export function JournalEntry({ onEntrySaved }: JournalEntryProps) {
           className="w-full bg-gradient-primary hover:shadow-strong transition-all duration-300 hover:scale-[1.02]"
         >
           <Save className="h-4 w-4 mr-2" />
-          {isSaving ? 'Saving...' : 'Save Entry'}
+          {isSaving ? (editingEntry ? 'Updating...' : 'Saving...') : (editingEntry ? 'Update Entry' : 'Save Entry')}
         </Button>
       </Card>
     </div>

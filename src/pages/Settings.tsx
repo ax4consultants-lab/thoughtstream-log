@@ -62,10 +62,10 @@ export function Settings() {
     try {
       setClearing(true);
       await journalDB.clear();
-      setStats({
-        totalEntries: 0,
-        totalStorageSize: 0
-      });
+      
+      // Refresh stats after clearing
+      await loadStats();
+      
       toast({
         title: "Data cleared",
         description: "All journal entries have been permanently deleted",
@@ -80,7 +80,7 @@ export function Settings() {
     } finally {
       setClearing(false);
     }
-  }, [toast]);
+  }, [toast, loadStats]);
 
   const formatStorageSize = (bytes: number) => {
     if (bytes === 0) return '0 B';
