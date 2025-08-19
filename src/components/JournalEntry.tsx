@@ -2,11 +2,13 @@ import React, { useState, useCallback, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Card } from '@/components/ui/card';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Save, BookOpen, X } from 'lucide-react';
 import { AudioRecorder } from './AudioRecorder';
 import { TagInput } from './TagInput';
 import { useToast } from '@/hooks/use-toast';
 import { journalDB } from '@/lib/journalDB';
+import { transcribeAudio } from '@/lib/utils';
 import { JournalEntry as JournalEntryType } from '@/types/journal';
 
 interface JournalEntryProps {
@@ -20,6 +22,8 @@ export function JournalEntry({ onEntrySaved }: JournalEntryProps) {
   const [isSaving, setIsSaving] = useState(false);
   const [editingEntry, setEditingEntry] = useState<JournalEntryType | null>(null);
   const [audioRecorderKey, setAudioRecorderKey] = useState(0);
+  const [transcribeAfterSave, setTranscribeAfterSave] = useState(false);
+  const [isTranscribing, setIsTranscribing] = useState(false);
   
   const { toast } = useToast();
 
@@ -61,6 +65,28 @@ export function JournalEntry({ onEntrySaved }: JournalEntryProps) {
     
     try {
       const now = new Date();
+      let transcript: string | undefined;
+
+      // Handle transcription if enabled and audio exists
+      if (transcribeAfterSave && audioBlob && !editingEntry) {
+        setIsTranscribing(true);
+        try {
+          transcript = await transcribeAudio(audioBlob);
+          toast({
+            title: "Audio transcribed",
+            description: "Voice note has been converted to text",
+          });
+        } catch (error) {
+          console.error('Transcription failed:', error);
+          toast({
+            title: "Transcription failed",
+            description: "Audio saved but transcription couldn't be completed",
+            variant: "destructive",
+          });
+        } finally {
+          setIsTranscribing(false);
+        }
+      }
       
       if (editingEntry) {
         // Update existing entry
@@ -89,6 +115,7 @@ export function JournalEntry({ onEntrySaved }: JournalEntryProps) {
           tags,
           timestamp: now,
           audioBlob: audioBlob || undefined,
+          transcript,
           createdAt: now,
           updatedAt: now,
         };
@@ -104,6 +131,7 @@ export function JournalEntry({ onEntrySaved }: JournalEntryProps) {
         setContent('');
         setTags([]);
         setAudioBlob(null);
+        setTranscribeAfterSave(false);
         setAudioRecorderKey(prev => prev + 1);
         
         onEntrySaved?.(entry);
@@ -118,7 +146,7 @@ export function JournalEntry({ onEntrySaved }: JournalEntryProps) {
     } finally {
       setIsSaving(false);
     }
-  }, [content, tags, audioBlob, toast, onEntrySaved, editingEntry]);
+  }, [content, tags, audioBlob, toast, onEntrySaved, editingEntry, transcribeAfterSave]);
 
   const handleAudioRecorded = useCallback((blob: Blob) => {
     setAudioBlob(blob);
@@ -201,16 +229,33 @@ export function JournalEntry({ onEntrySaved }: JournalEntryProps) {
             disabled={isSaving}
             existingAudioBlob={audioBlob}
           />
+          
+          {audioBlob && !editingEntry && (
+            <div className="flex items-center space-x-2 mt-2">
+              <Checkbox 
+                id="transcribe"
+                checked={transcribeAfterSave}
+                onCheckedChange={(checked) => setTranscribeAfterSave(checked === true)}
+                disabled={isSaving}
+              />
+              <label 
+                htmlFor="transcribe" 
+                className="text-sm text-muted-foreground cursor-pointer"
+              >
+                Transcribe audio after save
+              </label>
+            </div>
+          )}
         </div>
 
         <Button
           onClick={handleSave}
-          disabled={isSaving || (!content.trim() && !audioBlob)}
+          disabled={isSaving || isTranscribing || (!content.trim() && !audioBlob)}
           size="lg"
           className="w-full bg-gradient-primary hover:shadow-strong transition-all duration-300 hover:scale-[1.02]"
         >
           <Save className="h-4 w-4 mr-2" />
-          {isSaving ? (editingEntry ? 'Updating...' : 'Saving...') : (editingEntry ? 'Update Entry' : 'Save Entry')}
+          {isTranscribing ? 'Transcribing...' : (isSaving ? (editingEntry ? 'Updating...' : 'Saving...') : (editingEntry ? 'Update Entry' : 'Save Entry'))}
         </Button>
       </Card>
     </div>

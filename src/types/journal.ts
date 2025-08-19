@@ -5,6 +5,7 @@ export interface JournalEntry {
   timestamp: Date;
   audioBlob?: Blob;
   audioUrl?: string;
+  transcript?: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -45,5 +46,6 @@ export interface ExportData {
   tags: string[];
   entry: string;
   audio?: string; // Base64 encoded audio
+  transcript?: string;
   timestamp: string;
 }

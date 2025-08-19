@@ -10,11 +10,15 @@ import {
   Edit3, 
   Trash2, 
   Clock,
-  Calendar
+  Calendar,
+  Copy,
+  Download,
+  Bot
 } from 'lucide-react';
 import { JournalEntry } from '@/types/journal';
 import { journalDB } from '@/lib/journalDB';
 import { useToast } from '@/hooks/use-toast';
+import { blobToBase64 } from '@/lib/utils';
 import { cn } from '@/lib/utils';
 
 export function Timeline() {
@@ -123,6 +127,72 @@ export function Timeline() {
       }
     }
   }, [playingAudio, audioUrls]);
+
+  const handleCopyAudioBase64 = useCallback(async (entry: JournalEntry) => {
+    if (!entry.audioBlob) return;
+    
+    try {
+      const base64 = await blobToBase64(entry.audioBlob);
+      const preview = base64.slice(0, 40) + '...';
+      
+      await navigator.clipboard.writeText(base64);
+      toast({
+        title: "Audio copied to clipboard",
+        description: `Base64 audio data copied — paste into GPT for transcription\nPreview: ${preview}`,
+      });
+    } catch (error) {
+      console.error('Failed to copy audio:', error);
+      toast({
+        title: "Copy failed",
+        description: "Could not copy audio to clipboard",
+        variant: "destructive",
+      });
+    }
+  }, [toast]);
+
+  const handleCopyTranscript = useCallback(async (transcript: string) => {
+    try {
+      await navigator.clipboard.writeText(transcript);
+      toast({
+        title: "Transcript copied",
+        description: "Transcript text copied to clipboard",
+      });
+    } catch (error) {
+      console.error('Failed to copy transcript:', error);
+      toast({
+        title: "Copy failed",
+        description: "Could not copy transcript to clipboard",
+        variant: "destructive",
+      });
+    }
+  }, [toast]);
+
+  const handleCopyGPTFormat = useCallback(async (entry: JournalEntry) => {
+    try {
+      const gptData = {
+        date: formatDate(entry.timestamp),
+        content: entry.content,
+        tags: entry.tags,
+        transcript: entry.transcript || null,
+        timestamp: entry.timestamp.toISOString(),
+      };
+      
+      const jsonString = JSON.stringify(gptData, null, 2);
+      await navigator.clipboard.writeText(jsonString);
+      
+      toast({
+        title: "GPT format copied",
+        description: "Journal entry formatted for AI analysis and copied to clipboard",
+      });
+    } catch (error) {
+      console.error('Failed to copy GPT format:', error);
+      toast({
+        title: "Copy failed",
+        description: "Could not copy GPT format to clipboard",
+        variant: "destructive",
+      });
+    }
+  }, [toast]);
 
   const formatDate = (date: Date) => {
     const now = new Date();
@@ -262,15 +332,55 @@ export function Timeline() {
                           <Play className="h-4 w-4" />
                         )}
                       </Button>
-                      <span className="text-xs text-muted-foreground">
+                      <span className="text-xs text-muted-foreground flex-1">
                         Voice note
                       </span>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleCopyAudioBase64(entry)}
+                        className="h-8 w-8 p-0"
+                        title="Copy audio as base64"
+                      >
+                        <Copy className="h-3 w-3" />
+                      </Button>
                       <audio
                         id={`audio-${entry.id}`}
                         src={audioUrls.get(entry.id)}
                         onEnded={() => setPlayingAudio(null)}
                         className="hidden"
                       />
+                    </div>
+                  )}
+
+                  {entry.transcript && (
+                    <div className="p-3 bg-primary/5 rounded-lg border-l-2 border-primary/20">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-xs font-medium text-primary">Transcript</span>
+                        <div className="flex gap-1">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleCopyTranscript(entry.transcript!)}
+                            className="h-6 w-6 p-0"
+                            title="Copy transcript"
+                          >
+                            <Copy className="h-3 w-3" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleCopyGPTFormat(entry)}
+                            className="h-6 w-6 p-0"
+                            title="Copy GPT-ready format"
+                          >
+                            <Bot className="h-3 w-3" />
+                          </Button>
+                        </div>
+                      </div>
+                      <p className="text-sm italic text-muted-foreground leading-relaxed">
+                        "{entry.transcript}"
+                      </p>
                     </div>
                   )}
                 </div>
