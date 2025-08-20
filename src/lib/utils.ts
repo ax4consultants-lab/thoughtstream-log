@@ -19,33 +19,8 @@ export const blobToBase64 = (blob: Blob): Promise<string> => {
   });
 };
 
-export const transcribeAudio = async (audioBlob: Blob, apiKey?: string): Promise<string> => {
-  if (!apiKey) {
-    // Simulate offline mode
-    return "Transcription not available in offline mode.";
-  }
-
-  try {
-    const formData = new FormData();
-    formData.append("file", audioBlob, "journal.webm");
-    formData.append("model", "whisper-1");
-
-    const res = await fetch("https://api.openai.com/v1/audio/transcriptions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-      },
-      body: formData,
-    });
-
-    if (!res.ok) {
-      throw new Error(`API request failed: ${res.status}`);
-    }
-
-    const data = await res.json();
-    return data.text || "No transcription available";
-  } catch (error) {
-    console.error('Transcription failed:', error);
-    return "Transcription failed - check your API key and connection";
-  }
+export const transcribeAudio = async (audioBlob: Blob): Promise<string> => {
+  // For frontend use, we'll simulate transcription since API keys should not be exposed
+  // In a real app, this would be handled by a backend/edge function
+  return "Transcription not available in offline mode - use the base64 export to transcribe with external tools.";
 };
