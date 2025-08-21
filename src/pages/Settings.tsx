@@ -2,6 +2,9 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { 
   AlertDialog,
   AlertDialogAction,
@@ -20,10 +23,14 @@ import {
   Download, 
   Shield,
   Cloud,
-  HardDrive
+  HardDrive,
+  Key,
+  Brain,
+  Copy,
+  Calendar
 } from 'lucide-react';
 import { journalDB } from '@/lib/journalDB';
-import { JournalStats } from '@/types/journal';
+import { JournalStats, JournalEntry } from '@/types/journal';
 import { useToast } from '@/hooks/use-toast';
 import { ExportModal } from '@/components/ExportModal';
 
@@ -34,6 +41,10 @@ export function Settings() {
   });
   const [loading, setLoading] = useState(true);
   const [clearing, setClearing] = useState(false);
+  const [apiKey, setApiKey] = useState('');
+  const [showApiKey, setShowApiKey] = useState(false);
+  const [weeklyDigest, setWeeklyDigest] = useState('');
+  const [digestLoading, setDigestLoading] = useState(false);
   
   const { toast } = useToast();
 
@@ -56,6 +67,11 @@ export function Settings() {
 
   useEffect(() => {
     loadStats();
+    // Load API key from localStorage
+    const storedKey = localStorage.getItem('OPENAI_API_KEY');
+    if (storedKey) {
+      setApiKey(storedKey);
+    }
   }, [loadStats]);
 
   const handleClearAll = useCallback(async () => {
@@ -97,10 +113,101 @@ export function Settings() {
     });
   };
 
-  const handleEncryptionPlaceholder = () => {
+  const handleSaveApiKey = () => {
+    if (apiKey.trim()) {
+      localStorage.setItem('OPENAI_API_KEY', apiKey.trim());
+      toast({
+        title: "API Key saved",
+        description: "OpenAI API key has been saved securely",
+      });
+    } else {
+      localStorage.removeItem('OPENAI_API_KEY');
+      toast({
+        title: "API Key cleared",
+        description: "OpenAI API key has been removed",
+      });
+    }
+  };
+
+  const maskApiKey = (key: string) => {
+    if (!key) return '';
+    if (key.length < 8) return '*'.repeat(key.length);
+    return key.substring(0, 3) + '*'.repeat(key.length - 7) + key.substring(key.length - 4);
+  };
+
+  const generateWeeklyDigest = async () => {
+    try {
+      setDigestLoading(true);
+      const entries = await journalDB.getAll();
+      
+      // Get entries from last 7 days
+      const weekAgo = new Date();
+      weekAgo.setDate(weekAgo.getDate() - 7);
+      
+      const weeklyEntries = entries.filter(entry => 
+        new Date(entry.createdAt) >= weekAgo
+      );
+
+      if (weeklyEntries.length === 0) {
+        toast({
+          title: "No entries found",
+          description: "No journal entries from the last 7 days",
+        });
+        return;
+      }
+
+      // Generate digest
+      const allTags = [...new Set(weeklyEntries.flatMap(e => e.tags))];
+      const highlights = weeklyEntries
+        .map(e => e.content.split('\n')[0])
+        .filter(h => h.length > 10)
+        .slice(0, 5);
+
+      const digestMarkdown = `# Weekly Journal Digest
+## ${weekAgo.toDateString()} - ${new Date().toDateString()}
+
+### Summary
+- **Total Entries**: ${weeklyEntries.length}
+- **Active Tags**: ${allTags.join(', ')}
+- **Average Entry Length**: ${Math.round(weeklyEntries.reduce((acc, e) => acc + e.content.length, 0) / weeklyEntries.length)} chars
+
+### Highlights
+${highlights.map(h => `- ${h}`).join('\n')}
+
+### All Entries
+${weeklyEntries.map(e => `**${e.createdAt.toLocaleDateString()}**: ${e.content.substring(0, 100)}...`).join('\n\n')}
+
+### JSON Export for AI Analysis
+\`\`\`json
+${JSON.stringify({
+  period: { start: weekAgo.toISOString(), end: new Date().toISOString() },
+  entries: weeklyEntries.map(e => ({
+    date: e.createdAt.toISOString(),
+    content: e.content,
+    tags: e.tags,
+    transcript: e.transcript
+  }))
+}, null, 2)}
+\`\`\``;
+
+      setWeeklyDigest(digestMarkdown);
+    } catch (error) {
+      console.error('Error generating digest:', error);
+      toast({
+        title: "Digest failed",
+        description: "Could not generate weekly digest",
+        variant: "destructive",
+      });
+    } finally {
+      setDigestLoading(false);
+    }
+  };
+
+  const copyWeeklyDigest = () => {
+    navigator.clipboard.writeText(weeklyDigest);
     toast({
-      title: "Coming soon",
-      description: "Local encryption will be available in a future update",
+      title: "Copied to clipboard",
+      description: "Weekly digest copied successfully",
     });
   };
 
@@ -156,6 +263,97 @@ export function Settings() {
         )}
       </Card>
 
+      {/* API Key Management */}
+      <Card className="p-4 space-y-4 shadow-soft">
+        <div className="flex items-center gap-2 mb-3">
+          <Key className="h-5 w-5 text-primary" />
+          <h2 className="font-semibold">OpenAI Integration</h2>
+        </div>
+        
+        <div className="space-y-3">
+          <div>
+            <Label htmlFor="apiKey">API Key</Label>
+            <div className="flex gap-2">
+              <Input
+                id="apiKey"
+                type={showApiKey ? "text" : "password"}
+                placeholder="sk-..."
+                value={showApiKey ? apiKey : maskApiKey(apiKey)}
+                onChange={(e) => setApiKey(e.target.value)}
+                className="flex-1"
+              />
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setShowApiKey(!showApiKey)}
+              >
+                {showApiKey ? "Hide" : "Show"}
+              </Button>
+            </div>
+          </div>
+          
+          <div className="flex gap-2">
+            <Button onClick={handleSaveApiKey} className="flex-1">
+              Save Key
+            </Button>
+            <Button 
+              variant="outline" 
+              onClick={() => { setApiKey(''); handleSaveApiKey(); }}
+            >
+              Clear
+            </Button>
+          </div>
+          
+          <p className="text-xs text-muted-foreground">
+            API key enables automatic audio transcription via Whisper
+          </p>
+        </div>
+      </Card>
+
+      {/* Weekly Digest */}
+      <Card className="p-4 space-y-4 shadow-soft">
+        <div className="flex items-center gap-2 mb-3">
+          <Calendar className="h-5 w-5 text-primary" />
+          <h2 className="font-semibold">Weekly Insights</h2>
+        </div>
+        
+        <Dialog>
+          <DialogTrigger asChild>
+            <Button 
+              variant="outline" 
+              className="w-full justify-start gap-3"
+              onClick={generateWeeklyDigest}
+              disabled={digestLoading}
+            >
+              <Brain className="h-4 w-4" />
+              {digestLoading ? 'Generating...' : 'Generate Weekly Digest'}
+            </Button>
+          </DialogTrigger>
+          <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>Weekly Journal Digest</DialogTitle>
+              <DialogDescription>
+                Summary of your journal entries from the last 7 days
+              </DialogDescription>
+            </DialogHeader>
+            
+            {weeklyDigest && (
+              <div className="space-y-4">
+                <div className="flex justify-end">
+                  <Button onClick={copyWeeklyDigest} size="sm" variant="outline">
+                    <Copy className="h-4 w-4 mr-2" />
+                    Copy Digest
+                  </Button>
+                </div>
+                <pre className="whitespace-pre-wrap text-sm bg-muted p-4 rounded-md overflow-x-auto">
+                  {weeklyDigest}
+                </pre>
+              </div>
+            )}
+          </DialogContent>
+        </Dialog>
+      </Card>
+
       {/* Data Management */}
       <Card className="p-4 space-y-4 shadow-soft">
         <div className="flex items-center gap-2 mb-3">
@@ -181,16 +379,6 @@ export function Settings() {
           >
             <Cloud className="h-4 w-4" />
             Backup to Cloud
-            <Badge variant="secondary" className="ml-auto text-xs">Soon</Badge>
-          </Button>
-
-          <Button 
-            variant="outline" 
-            className="w-full justify-start gap-3"
-            onClick={handleEncryptionPlaceholder}
-          >
-            <Shield className="h-4 w-4" />
-            Enable Encryption
             <Badge variant="secondary" className="ml-auto text-xs">Soon</Badge>
           </Button>
         </div>

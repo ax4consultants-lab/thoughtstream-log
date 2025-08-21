@@ -6,6 +6,13 @@
     <title>Journal - Capture Your Thoughts</title>
     <meta name="description" content="A beautiful, private journaling app with voice notes and timeline view" />
     <meta name="author" content="Lovable" />
+    
+    <!-- PWA -->
+    <link rel="manifest" href="/manifest.json" />
+    <meta name="theme-color" content="#8b5cf6" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="Echo Me" />
 
     <meta property="og:title" content="b4b94743-1bf6-4259-b31e-f803ecdbc458" />
     <meta property="og:description" content="Lovable Generated Project" />
@@ -20,5 +27,20 @@
   <body>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
+    
+    <!-- Register Service Worker -->
+    <script>
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register('/sw.js')
+            .then((registration) => {
+              console.log('SW registered: ', registration);
+            })
+            .catch((registrationError) => {
+              console.log('SW registration failed: ', registrationError);
+            });
+        });
+      }
+    </script>
   </body>
 </html>
