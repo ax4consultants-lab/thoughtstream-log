@@ -6,6 +6,13 @@ export interface JournalEntry {
   audioBlob?: Blob;
   audioUrl?: string;
   transcript?: string;
+  summary?: {
+    highlights: string[];
+    decisions: string[];
+    actions: string[];
+    risks: string[];
+    mood: string;
+  };
   createdAt: Date;
   updatedAt: Date;
 }
@@ -47,5 +54,12 @@ export interface ExportData {
   entry: string;
   audio?: string; // Base64 encoded audio
   transcript?: string;
+  summary?: {
+    highlights: string[];
+    decisions: string[];
+    actions: string[];
+    risks: string[];
+    mood: string;
+  };
   timestamp: string;
 }

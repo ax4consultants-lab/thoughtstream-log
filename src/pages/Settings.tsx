@@ -33,6 +33,7 @@ import { journalDB } from '@/lib/journalDB';
 import { JournalStats, JournalEntry } from '@/types/journal';
 import { useToast } from '@/hooks/use-toast';
 import { ExportModal } from '@/components/ExportModal';
+import { compileWeeklyDigest } from '@/lib/summarise';
 
 export function Settings() {
   const [stats, setStats] = useState<JournalStats>({
@@ -45,6 +46,8 @@ export function Settings() {
   const [showApiKey, setShowApiKey] = useState(false);
   const [weeklyDigest, setWeeklyDigest] = useState('');
   const [digestLoading, setDigestLoading] = useState(false);
+  const [gptDigest, setGptDigest] = useState('');
+  const [gptDigestLoading, setGptDigestLoading] = useState(false);
   
   const { toast } = useToast();
 
@@ -211,6 +214,49 @@ ${JSON.stringify({
     });
   };
 
+  const generateGptDigest = async () => {
+    try {
+      setGptDigestLoading(true);
+      const entries = await journalDB.getAll();
+      
+      // Get entries from last 7 days
+      const weekAgo = new Date();
+      weekAgo.setDate(weekAgo.getDate() - 7);
+      
+      const weeklyEntries = entries.filter(entry => 
+        new Date(entry.createdAt) >= weekAgo
+      );
+
+      if (weeklyEntries.length === 0) {
+        toast({
+          title: "No entries found",
+          description: "No journal entries from the last 7 days",
+        });
+        return;
+      }
+
+      const digest = await compileWeeklyDigest(weeklyEntries);
+      setGptDigest(digest);
+    } catch (error) {
+      console.error('GPT digest generation failed:', error);
+      toast({
+        title: "GPT Digest failed", 
+        description: error instanceof Error ? error.message : "Could not generate GPT digest",
+        variant: "destructive",
+      });
+    } finally {
+      setGptDigestLoading(false);
+    }
+  };
+
+  const copyGptDigest = () => {
+    navigator.clipboard.writeText(gptDigest);
+    toast({
+      title: "Copied to clipboard",
+      description: "GPT digest copied successfully",
+    });
+  };
+
   return (
     <div className="max-w-md mx-auto p-4 pb-20 space-y-6">
       <div className="text-center mb-6">
@@ -317,41 +363,81 @@ ${JSON.stringify({
           <h2 className="font-semibold">Weekly Insights</h2>
         </div>
         
-        <Dialog>
-          <DialogTrigger asChild>
-            <Button 
-              variant="outline" 
-              className="w-full justify-start gap-3"
-              onClick={generateWeeklyDigest}
-              disabled={digestLoading}
-            >
-              <Brain className="h-4 w-4" />
-              {digestLoading ? 'Generating...' : 'Generate Weekly Digest'}
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
-            <DialogHeader>
-              <DialogTitle>Weekly Journal Digest</DialogTitle>
-              <DialogDescription>
-                Summary of your journal entries from the last 7 days
-              </DialogDescription>
-            </DialogHeader>
-            
-            {weeklyDigest && (
-              <div className="space-y-4">
-                <div className="flex justify-end">
-                  <Button onClick={copyWeeklyDigest} size="sm" variant="outline">
-                    <Copy className="h-4 w-4 mr-2" />
-                    Copy Digest
-                  </Button>
+        <div className="space-y-2">
+          <Dialog>
+            <DialogTrigger asChild>
+              <Button 
+                variant="outline" 
+                className="w-full justify-start gap-3"
+                onClick={generateWeeklyDigest}
+                disabled={digestLoading}
+              >
+                <Calendar className="h-4 w-4" />
+                {digestLoading ? 'Generating...' : 'Generate Weekly Digest'}
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
+              <DialogHeader>
+                <DialogTitle>Weekly Journal Digest</DialogTitle>
+                <DialogDescription>
+                  Summary of your journal entries from the last 7 days
+                </DialogDescription>
+              </DialogHeader>
+              
+              {weeklyDigest && (
+                <div className="space-y-4">
+                  <div className="flex justify-end">
+                    <Button onClick={copyWeeklyDigest} size="sm" variant="outline">
+                      <Copy className="h-4 w-4 mr-2" />
+                      Copy Digest
+                    </Button>
+                  </div>
+                  <pre className="whitespace-pre-wrap text-sm bg-muted p-4 rounded-md overflow-x-auto">
+                    {weeklyDigest}
+                  </pre>
                 </div>
-                <pre className="whitespace-pre-wrap text-sm bg-muted p-4 rounded-md overflow-x-auto">
-                  {weeklyDigest}
-                </pre>
-              </div>
-            )}
-          </DialogContent>
-        </Dialog>
+              )}
+            </DialogContent>
+          </Dialog>
+
+          <Dialog>
+            <DialogTrigger asChild>
+              <Button 
+                variant="outline" 
+                className="w-full justify-start gap-3"
+                onClick={generateGptDigest}
+                disabled={gptDigestLoading}
+              >
+                <Brain className="h-4 w-4" />
+                {gptDigestLoading ? 'Generating...' : 'Generate GPT Digest'}
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
+              <DialogHeader>
+                <DialogTitle>AI-Powered Weekly Digest</DialogTitle>
+                <DialogDescription>
+                  Intelligent analysis of your journal entries from the last 7 days
+                </DialogDescription>
+              </DialogHeader>
+              
+              {gptDigest && (
+                <div className="space-y-4">
+                  <div className="flex justify-end">
+                    <Button onClick={copyGptDigest} size="sm" variant="outline">
+                      <Copy className="h-4 w-4 mr-2" />
+                      Copy GPT Digest
+                    </Button>
+                  </div>
+                  <div className="prose prose-sm max-w-none bg-muted p-4 rounded-md overflow-x-auto">
+                    <pre className="whitespace-pre-wrap font-sans text-sm">
+                      {gptDigest}
+                    </pre>
+                  </div>
+                </div>
+              )}
+            </DialogContent>
+          </Dialog>
+        </div>
       </Card>
 
       {/* Data Management */}

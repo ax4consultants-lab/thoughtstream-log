@@ -13,13 +13,16 @@ import {
   Calendar,
   Copy,
   Download,
-  Bot
+  Bot,
+  Sparkles,
+  Loader2
 } from 'lucide-react';
 import { JournalEntry } from '@/types/journal';
 import { journalDB } from '@/lib/journalDB';
 import { useToast } from '@/hooks/use-toast';
 import { blobToBase64 } from '@/lib/utils';
 import { cn } from '@/lib/utils';
+import { summariseEntry } from '@/lib/summarise';
 
 export function Timeline() {
   const [entries, setEntries] = useState<JournalEntry[]>([]);
@@ -27,6 +30,7 @@ export function Timeline() {
   const [playingAudio, setPlayingAudio] = useState<string | null>(null);
   const [audioUrls, setAudioUrls] = useState<Map<string, string>>(new Map());
   const [loading, setLoading] = useState(true);
+  const [summarizingEntries, setSummarizingEntries] = useState<Set<string>>(new Set());
   
   const { toast } = useToast();
 
@@ -190,6 +194,39 @@ export function Timeline() {
         title: "Copy failed",
         description: "Could not copy GPT format to clipboard",
         variant: "destructive",
+      });
+    }
+  }, [toast]);
+
+  const handleSummarizeEntry = useCallback(async (entry: JournalEntry) => {
+    try {
+      setSummarizingEntries(prev => new Set([...prev, entry.id]));
+      
+      const summary = await summariseEntry(entry);
+      
+      // Update the entry with the summary
+      const updatedEntry = { ...entry, summary, updatedAt: new Date() };
+      await journalDB.update(updatedEntry);
+      
+      // Update the local state
+      setEntries(prev => prev.map(e => e.id === entry.id ? updatedEntry : e));
+      
+      toast({
+        title: "Entry summarized",
+        description: "AI summary has been generated and saved",
+      });
+    } catch (error) {
+      console.error('Summarization failed:', error);
+      toast({
+        title: "Summarization failed",
+        description: error instanceof Error ? error.message : "Could not generate summary",
+        variant: "destructive",
+      });
+    } finally {
+      setSummarizingEntries(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(entry.id);
+        return newSet;
       });
     }
   }, [toast]);
@@ -383,30 +420,89 @@ export function Timeline() {
                       </p>
                     </div>
                   )}
+
+                  {entry.summary && (
+                    <div className="p-3 bg-accent/20 rounded-lg border border-accent/30">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-xs font-medium text-accent-foreground flex items-center gap-1">
+                          <Sparkles className="h-3 w-3" />
+                          AI Summary
+                        </span>
+                      </div>
+                      <div className="space-y-2 text-xs">
+                        {entry.summary.highlights.length > 0 && (
+                          <div>
+                            <span className="font-medium text-muted-foreground">Highlights:</span>
+                            <ul className="mt-1 space-y-1">
+                              {entry.summary.highlights.map((highlight, idx) => (
+                                <li key={idx} className="text-muted-foreground">• {highlight}</li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+                        {entry.summary.actions.length > 0 && (
+                          <div>
+                            <span className="font-medium text-muted-foreground">Actions:</span>
+                            <ul className="mt-1 space-y-1">
+                              {entry.summary.actions.map((action, idx) => (
+                                <li key={idx} className="text-muted-foreground">• {action}</li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+                        {entry.summary.mood && (
+                          <div>
+                            <span className="font-medium text-muted-foreground">Mood:</span>
+                            <span className="ml-1 text-muted-foreground">{entry.summary.mood}</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 {isExpanded && (
-                  <div className="flex justify-end gap-2 pt-2 border-t">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-8 px-3 text-xs hover:bg-primary/10 hover:text-primary"
-                      asChild
-                    >
-                      <a href={`/?id=${entry.id}`}>
-                        <Edit3 className="h-3 w-3 mr-1" />
-                        Edit
-                      </a>
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-8 px-3 text-xs hover:bg-destructive/10 hover:text-destructive"
-                      onClick={() => handleDelete(entry.id)}
-                    >
-                      <Trash2 className="h-3 w-3 mr-1" />
-                      Delete
-                    </Button>
+                  <div className="flex justify-between items-center pt-2 border-t">
+                    <div className="flex gap-2">
+                      {!entry.summary && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-8 px-3 text-xs hover:bg-accent/10 hover:text-accent-foreground"
+                          onClick={() => handleSummarizeEntry(entry)}
+                          disabled={summarizingEntries.has(entry.id)}
+                        >
+                          {summarizingEntries.has(entry.id) ? (
+                            <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                          ) : (
+                            <Sparkles className="h-3 w-3 mr-1" />
+                          )}
+                          {summarizingEntries.has(entry.id) ? 'Summarizing...' : 'Summarize'}
+                        </Button>
+                      )}
+                    </div>
+                    <div className="flex gap-2">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-8 px-3 text-xs hover:bg-primary/10 hover:text-primary"
+                        asChild
+                      >
+                        <a href={`/?id=${entry.id}`}>
+                          <Edit3 className="h-3 w-3 mr-1" />
+                          Edit
+                        </a>
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-8 px-3 text-xs hover:bg-destructive/10 hover:text-destructive"
+                        onClick={() => handleDelete(entry.id)}
+                      >
+                        <Trash2 className="h-3 w-3 mr-1" />
+                        Delete
+                      </Button>
+                    </div>
                   </div>
                 )}
               </div>

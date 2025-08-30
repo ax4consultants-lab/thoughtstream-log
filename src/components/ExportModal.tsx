@@ -152,15 +152,23 @@ export function ExportModal({ children }: ExportModalProps) {
           timestamp: entry.timestamp.toISOString(),
         };
 
-        if (options.includeAudio && entry.audioBlob) {
-          try {
-            data.audio = await blobToBase64(entry.audioBlob);
-          } catch (error) {
-            data.audio = '[Audio conversion failed]';
+          if (entry.transcript) {
+            data.transcript = entry.transcript;
           }
-        }
 
-        return data;
+          if (entry.summary) {
+            data.summary = entry.summary;
+          }
+
+          if (options.includeAudio && entry.audioBlob) {
+            try {
+              data.audio = await blobToBase64(entry.audioBlob);
+            } catch (error) {
+              data.audio = '[Audio conversion failed]';
+            }
+          }
+
+          return data;
       })
     );
 
@@ -171,14 +179,25 @@ export function ExportModal({ children }: ExportModalProps) {
         previewText = JSON.stringify(exportData, null, 2);
         break;
       case 'markdown':
-        previewText = exportData.map(data => 
-          `# ${data.date}\n\n${data.tags.length > 0 ? `**Tags:** ${data.tags.join(', ')}\n\n` : ''}${data.entry}${data.audio ? '\n\n[Audio data included]' : ''}\n\n---\n`
-        ).join('\n');
+        previewText = exportData.map(data => {
+          let content = `# ${data.date}\n\n${data.tags.length > 0 ? `**Tags:** ${data.tags.join(', ')}\n\n` : ''}${data.entry}`;
+          if (data.transcript) content += `\n\n**Transcript:** "${data.transcript}"`;
+          if (data.summary) {
+            content += `\n\n**AI Summary:**\n- **Highlights:** ${data.summary.highlights.join(', ')}\n- **Mood:** ${data.summary.mood}`;
+            if (data.summary.actions.length > 0) content += `\n- **Actions:** ${data.summary.actions.join(', ')}`;
+          }
+          if (data.audio) content += '\n\n[Audio data included]';
+          return content + '\n\n---\n';
+        }).join('\n');
         break;
       case 'text':
-        previewText = exportData.map(data => 
-          `Date: ${data.date}\n${data.tags.length > 0 ? `Tags: ${data.tags.join(', ')}\n` : ''}Content: ${data.entry}${data.audio ? '\nAudio: [Base64 data included]' : ''}\n\n`
-        ).join('\n');
+        previewText = exportData.map(data => {
+          let content = `Date: ${data.date}\n${data.tags.length > 0 ? `Tags: ${data.tags.join(', ')}\n` : ''}Content: ${data.entry}`;
+          if (data.transcript) content += `\nTranscript: "${data.transcript}"`;
+          if (data.summary) content += `\nSummary: ${JSON.stringify(data.summary, null, 2)}`;
+          if (data.audio) content += '\nAudio: [Base64 data included]';
+          return content + '\n\n';
+        }).join('\n');
         break;
     }
 
@@ -228,6 +247,14 @@ export function ExportModal({ children }: ExportModalProps) {
             timestamp: entry.timestamp.toISOString(),
           };
 
+          if (entry.transcript) {
+            data.transcript = entry.transcript;
+          }
+
+          if (entry.summary) {
+            data.summary = entry.summary;
+          }
+
           if (exportOptions.includeAudio && entry.audioBlob) {
             try {
               data.audio = await blobToBase64(entry.audioBlob);
@@ -252,16 +279,27 @@ export function ExportModal({ children }: ExportModalProps) {
           mimeType = 'application/json';
           break;
         case 'markdown':
-          content = exportData.map(data => 
-            `# ${data.date}\n\n${data.tags.length > 0 ? `**Tags:** ${data.tags.join(', ')}\n\n` : ''}${data.entry}${data.audio ? '\n\n[Audio data included]' : ''}\n\n---\n`
-          ).join('\n');
+          content = exportData.map(data => {
+            let content = `# ${data.date}\n\n${data.tags.length > 0 ? `**Tags:** ${data.tags.join(', ')}\n\n` : ''}${data.entry}`;
+            if (data.transcript) content += `\n\n**Transcript:** "${data.transcript}"`;
+            if (data.summary) {
+              content += `\n\n**AI Summary:**\n- **Highlights:** ${data.summary.highlights.join(', ')}\n- **Mood:** ${data.summary.mood}`;
+              if (data.summary.actions.length > 0) content += `\n- **Actions:** ${data.summary.actions.join(', ')}`;
+            }
+            if (data.audio) content += '\n\n[Audio data included]';
+            return content + '\n\n---\n';
+          }).join('\n');
           filename = `journal-export-${new Date().toISOString().split('T')[0]}.md`;
           mimeType = 'text/markdown';
           break;
         case 'text':
-          content = exportData.map(data => 
-            `Date: ${data.date}\n${data.tags.length > 0 ? `Tags: ${data.tags.join(', ')}\n` : ''}Content: ${data.entry}${data.audio ? '\nAudio: [Base64 data included]' : ''}\n\n`
-          ).join('\n');
+          content = exportData.map(data => {
+            let content = `Date: ${data.date}\n${data.tags.length > 0 ? `Tags: ${data.tags.join(', ')}\n` : ''}Content: ${data.entry}`;
+            if (data.transcript) content += `\nTranscript: "${data.transcript}"`;
+            if (data.summary) content += `\nSummary: ${JSON.stringify(data.summary, null, 2)}`;
+            if (data.audio) content += '\nAudio: [Base64 data included]';
+            return content + '\n\n';
+          }).join('\n');
           filename = `journal-export-${new Date().toISOString().split('T')[0]}.txt`;
           break;
       }
