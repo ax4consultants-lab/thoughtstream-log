@@ -15,22 +15,30 @@ export async function summariseEntry(entry: JournalEntry): Promise<EntrySummary>
     entry.transcript ? `Audio transcript: "${entry.transcript}"` : ''
   ].filter(Boolean).join('\n\n');
 
-  const prompt = `Analyze this journal entry and extract key insights in the following format:
+  const prompt = `Analyze this journal entry and extract key insights. Focus on actionable intelligence and emotional patterns.
 
 **Content to analyze:**
 ${contentToAnalyse}
 
-**Tags:** ${entry.tags.join(', ')}
-**Date:** ${entry.timestamp.toDateString()}
+**Context:**
+- Tags: ${entry.tags.join(', ') || 'None'}
+- Date: ${entry.timestamp.toDateString()}
+- Entry type: ${entry.audioBlob ? 'Voice + Text' : 'Text only'}
 
-Please respond with a JSON object containing:
-- highlights: Array of 2-3 key insights or important moments
-- decisions: Array of any decisions mentioned
-- actions: Array of action items or next steps mentioned  
-- risks: Array of any concerns or risks identified
-- mood: A brief description of the emotional tone (1-2 words)
+Extract and return as valid JSON:
+{
+  "highlights": ["Key insight 1", "Key insight 2"], // 2-3 most important points
+  "decisions": ["Decision made"], // Any choices or commitments
+  "actions": ["Action item"], // Next steps or tasks mentioned
+  "risks": ["Concern identified"], // Worries, obstacles, or red flags
+  "mood": "descriptive word" // Overall emotional tone in 1-2 words
+}
 
-Keep each array item concise (under 50 characters). Return only valid JSON.`;
+Guidelines:
+- Keep items concise (under 50 chars each)
+- Focus on patterns that could help with personal growth
+- Identify both explicit and implicit themes
+- Return only valid JSON, no commentary`;
 
   try {
     const response = await openai.chatCompletion([

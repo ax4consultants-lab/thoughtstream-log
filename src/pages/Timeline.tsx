@@ -15,12 +15,13 @@ import {
   Download,
   Bot,
   Sparkles,
-  Loader2
+  Loader2,
+  Volume2
 } from 'lucide-react';
 import { JournalEntry } from '@/types/journal';
 import { journalDB } from '@/lib/journalDB';
 import { useToast } from '@/hooks/use-toast';
-import { blobToBase64 } from '@/lib/utils';
+import { blobToBase64, transcribeAudio } from '@/lib/utils';
 import { cn } from '@/lib/utils';
 import { summariseEntry } from '@/lib/summarise';
 
@@ -31,6 +32,8 @@ export function Timeline() {
   const [audioUrls, setAudioUrls] = useState<Map<string, string>>(new Map());
   const [loading, setLoading] = useState(true);
   const [summarizingEntries, setSummarizingEntries] = useState<Set<string>>(new Set());
+  const [bulkTranscribing, setBulkTranscribing] = useState(false);
+  const [transcribingEntries, setTranscribingEntries] = useState<Set<string>>(new Set());
   
   const { toast } = useToast();
 
@@ -231,6 +234,73 @@ export function Timeline() {
     }
   }, [toast]);
 
+  const handleBulkTranscribe = useCallback(async () => {
+    try {
+      setBulkTranscribing(true);
+      
+      // Find entries with audio but no transcript
+      const entriesToTranscribe = entries.filter(entry => 
+        entry.audioBlob && !entry.transcript
+      );
+
+      if (entriesToTranscribe.length === 0) {
+        toast({
+          title: "No entries to transcribe",
+          description: "All audio entries already have transcripts",
+        });
+        return;
+      }
+
+      let successCount = 0;
+      let failCount = 0;
+
+      // Process with rate limiting (1 per 2 seconds to respect API limits)
+      for (const entry of entriesToTranscribe) {
+        try {
+          setTranscribingEntries(prev => new Set([...prev, entry.id]));
+          
+          const transcript = await transcribeAudio(entry.audioBlob!);
+          const updatedEntry = { ...entry, transcript, updatedAt: new Date() };
+          await journalDB.update(updatedEntry);
+          
+          // Update local state
+          setEntries(prev => prev.map(e => e.id === entry.id ? updatedEntry : e));
+          
+          successCount++;
+          
+          // Rate limiting delay (except for last entry)
+          if (entriesToTranscribe.indexOf(entry) < entriesToTranscribe.length - 1) {
+            await new Promise(resolve => setTimeout(resolve, 2000));
+          }
+        } catch (error) {
+          console.error(`Transcription failed for entry ${entry.id}:`, error);
+          failCount++;
+        } finally {
+          setTranscribingEntries(prev => {
+            const newSet = new Set(prev);
+            newSet.delete(entry.id);
+            return newSet;
+          });
+        }
+      }
+
+      toast({
+        title: "Bulk transcription completed",
+        description: `${successCount} transcribed successfully${failCount > 0 ? `, ${failCount} failed` : ''}`,
+        variant: failCount > 0 ? "destructive" : "default",
+      });
+    } catch (error) {
+      console.error('Bulk transcription failed:', error);
+      toast({
+        title: "Bulk transcription failed",
+        description: "Could not complete bulk transcription",
+        variant: "destructive",
+      });
+    } finally {
+      setBulkTranscribing(false);
+    }
+  }, [entries, toast]);
+
   const formatDate = (date: Date) => {
     const now = new Date();
     const entryDate = new Date(date);
@@ -294,9 +364,27 @@ export function Timeline() {
         <h1 className="text-2xl font-bold bg-gradient-primary bg-clip-text text-transparent mb-2">
           Timeline
         </h1>
-        <p className="text-muted-foreground text-sm">
+        <p className="text-muted-foreground text-sm mb-3">
           {entries.length} {entries.length === 1 ? 'entry' : 'entries'}
         </p>
+        
+        {/* Bulk actions */}
+        <div className="flex justify-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleBulkTranscribe}
+            disabled={bulkTranscribing || entries.filter(e => e.audioBlob && !e.transcript).length === 0}
+            className="text-xs"
+          >
+            {bulkTranscribing ? (
+              <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+            ) : (
+              <Volume2 className="h-3 w-3 mr-1" />
+            )}
+            {bulkTranscribing ? 'Transcribing...' : 'Bulk Transcribe'}
+          </Button>
+        </div>
       </div>
 
       <div className="space-y-4">
@@ -393,7 +481,12 @@ export function Timeline() {
                   {entry.transcript && (
                     <div className="p-3 bg-primary/5 rounded-lg border-l-2 border-primary/20">
                       <div className="flex items-center justify-between mb-2">
-                        <span className="text-xs font-medium text-primary">Transcript</span>
+                        <span className="text-xs font-medium text-primary flex items-center gap-1">
+                          {transcribingEntries.has(entry.id) && (
+                            <Loader2 className="h-3 w-3 animate-spin" />
+                          )}
+                          Transcript
+                        </span>
                         <div className="flex gap-1">
                           <Button
                             variant="ghost"
@@ -418,6 +511,16 @@ export function Timeline() {
                       <p className="text-sm italic text-muted-foreground leading-relaxed">
                         "{entry.transcript}"
                       </p>
+                    </div>
+                  )}
+
+                  {/* Show transcription in progress for entries being processed */}
+                  {transcribingEntries.has(entry.id) && !entry.transcript && (
+                    <div className="p-3 bg-primary/5 rounded-lg border-l-2 border-primary/20">
+                      <div className="flex items-center gap-2">
+                        <Loader2 className="h-3 w-3 animate-spin" />
+                        <span className="text-xs font-medium text-primary">Transcribing audio...</span>
+                      </div>
                     </div>
                   )}
 

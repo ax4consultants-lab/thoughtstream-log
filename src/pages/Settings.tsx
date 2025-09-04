@@ -34,6 +34,7 @@ import { JournalStats, JournalEntry } from '@/types/journal';
 import { useToast } from '@/hooks/use-toast';
 import { ExportModal } from '@/components/ExportModal';
 import { compileWeeklyDigest } from '@/lib/summarise';
+import { blobToBase64 } from '@/lib/utils';
 
 export function Settings() {
   const [stats, setStats] = useState<JournalStats>({
@@ -48,6 +49,8 @@ export function Settings() {
   const [digestLoading, setDigestLoading] = useState(false);
   const [gptDigest, setGptDigest] = useState('');
   const [gptDigestLoading, setGptDigestLoading] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const [exporting, setExporting] = useState(false);
   
   const { toast } = useToast();
 
@@ -257,6 +260,112 @@ ${JSON.stringify({
     });
   };
 
+  const handleFullBackup = async () => {
+    try {
+      setExporting(true);
+      const entries = await journalDB.getAll();
+      
+      const backupData = {
+        version: "1.0",
+        timestamp: new Date().toISOString(),
+        entries: await Promise.all(entries.map(async entry => ({
+          ...entry,
+          timestamp: entry.timestamp.toISOString(),
+          createdAt: entry.createdAt.toISOString(),
+          updatedAt: entry.updatedAt.toISOString(),
+          audioBlob: entry.audioBlob ? await blobToBase64(entry.audioBlob) : undefined
+        })))
+      };
+
+      const dataStr = JSON.stringify(backupData, null, 2);
+      const dataBlob = new Blob([dataStr], { type: 'application/json' });
+      
+      const url = URL.createObjectURL(dataBlob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `echo-me-backup-${new Date().toISOString().split('T')[0]}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+
+      toast({
+        title: "Backup exported",
+        description: "Full database backup saved to downloads",
+      });
+    } catch (error) {
+      console.error('Backup failed:', error);
+      toast({
+        title: "Backup failed",
+        description: "Could not create backup file",
+        variant: "destructive",
+      });
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  const handleFullRestore = () => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.json';
+    input.onchange = async (e) => {
+      const file = (e.target as HTMLInputElement).files?.[0];
+      if (!file) return;
+
+      try {
+        setImporting(true);
+        const text = await file.text();
+        const backupData = JSON.parse(text);
+
+        if (!backupData.entries || !Array.isArray(backupData.entries)) {
+          throw new Error('Invalid backup file format');
+        }
+
+        // Confirm restoration
+        if (!confirm(`This will restore ${backupData.entries.length} entries and replace all existing data. Continue?`)) {
+          return;
+        }
+
+        // Clear existing data
+        await journalDB.clear();
+
+        // Restore entries
+        for (const entryData of backupData.entries) {
+          const entry: JournalEntry = {
+            ...entryData,
+            timestamp: new Date(entryData.timestamp),
+            createdAt: new Date(entryData.createdAt),
+            updatedAt: new Date(entryData.updatedAt),
+            audioBlob: entryData.audioBlob ? 
+              await (async () => {
+                const response = await fetch(`data:audio/webm;base64,${entryData.audioBlob}`);
+                return response.blob();
+              })() : undefined
+          };
+          await journalDB.save(entry);
+        }
+
+        await loadStats();
+
+        toast({
+          title: "Restore completed",
+          description: `Successfully restored ${backupData.entries.length} entries`,
+        });
+      } catch (error) {
+        console.error('Restore failed:', error);
+        toast({
+          title: "Restore failed",
+          description: "Could not restore from backup file. Check file format.",
+          variant: "destructive",
+        });
+      } finally {
+        setImporting(false);
+      }
+    };
+    input.click();
+  };
+
   return (
     <div className="max-w-md mx-auto p-4 pb-20 space-y-6">
       <div className="text-center mb-6">
@@ -461,11 +570,21 @@ ${JSON.stringify({
           <Button 
             variant="outline" 
             className="w-full justify-start gap-3"
-            onClick={handleBackupPlaceholder}
+            onClick={handleFullBackup}
+            disabled={exporting || stats.totalEntries === 0}
+          >
+            <Download className="h-4 w-4" />
+            {exporting ? 'Exporting...' : 'Full Backup'}
+          </Button>
+
+          <Button 
+            variant="outline" 
+            className="w-full justify-start gap-3"
+            onClick={handleFullRestore}
+            disabled={importing}
           >
             <Cloud className="h-4 w-4" />
-            Backup to Cloud
-            <Badge variant="secondary" className="ml-auto text-xs">Soon</Badge>
+            {importing ? 'Restoring...' : 'Restore Backup'}
           </Button>
         </div>
       </Card>
