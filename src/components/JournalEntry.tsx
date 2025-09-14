@@ -3,13 +3,15 @@ import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Card } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Save, BookOpen, X } from 'lucide-react';
+import { Save, X } from 'lucide-react';
 import { AudioRecorder } from './AudioRecorder';
 import { TagInput } from './TagInput';
 import { useToast } from '@/hooks/use-toast';
 import { journalDB } from '@/lib/journalDB';
 import { transcribeAudio } from '@/lib/utils';
 import { JournalEntry as JournalEntryType } from '@/types/journal';
+import ax4LogoYellow from '@/assets/ax4-logo-yellow.png';
+import ax4LogoMono from '@/assets/ax4-logo-mono.png';
 
 interface JournalEntryProps {
   onEntrySaved?: (entry: JournalEntryType) => void;
@@ -161,7 +163,16 @@ export function JournalEntry({ onEntrySaved }: JournalEntryProps) {
     <div className="max-w-md mx-auto space-y-6 p-4">
       <div className="text-center mb-8">
         <div className="flex items-center justify-center gap-3 mb-2">
-          <BookOpen className="h-8 w-8 text-primary" />
+          <img 
+            src={ax4LogoYellow} 
+            alt="AX4 Logo" 
+            className="h-10 w-10 dark:hidden"
+          />
+          <img 
+            src={ax4LogoMono} 
+            alt="AX4 Logo" 
+            className="h-10 w-10 hidden dark:block"
+          />
           <h1 className="text-2xl font-bold bg-gradient-primary bg-clip-text text-transparent">
             {editingEntry ? 'Edit Entry' : 'Journal'}
           </h1>
