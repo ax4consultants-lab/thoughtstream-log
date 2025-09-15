@@ -1,6 +1,6 @@
 import React from 'react';
 import { Button } from '@/components/ui/button';
-import { BookOpen, Clock, Settings, Download } from 'lucide-react';
+import { Home, Clock, Settings, Download } from 'lucide-react';
 import { useLocation } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 import { ExportModal } from './ExportModal';
@@ -9,7 +9,7 @@ export function BottomNav() {
   const location = useLocation();
 
   const navItems = [
-    { icon: BookOpen, label: 'Write', href: '/', active: location.pathname === '/' },
+    { icon: Home, label: 'Home', href: '/', active: location.pathname === '/' },
     { icon: Clock, label: 'Timeline', href: '/timeline', active: location.pathname === '/timeline' },
     { icon: Settings, label: 'Settings', href: '/settings', active: location.pathname === '/settings' },
   ];
